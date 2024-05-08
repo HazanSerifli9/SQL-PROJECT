@@ -1,0 +1,77 @@
+/*
+Case 5 : RFM 
+Perform RFM analysis using the data set in the e_commerce_data_.csv file.
+When calculating recency, take the last order date as basis, not today's date. 
+*/
+
+/*Today's date calculation*/
+
+SELECT customer_id, MAX(invoicedate) as last_order_date
+FROM dataset
+GROUP BY customer_id
+ORDER BY last_order_date DESC;
+
+/*today's date is 2011-12-09*/
+
+/*RFM Analysis*/
+
+WITH RFM AS 
+(
+    WITH MAX_INVOICE_DATE AS (
+        SELECT 
+            customer_id,
+            MAX(invoicedate::date) AS last_invoice_date
+        FROM dataset
+        WHERE invoiceno NOT LIKE 'C%'
+        GROUP BY customer_id
+    )
+    SELECT 
+        CUSTOMER_ID,
+        (SELECT MAX(invoicedate::date) FROM dataset) - LAST_INVOICE_DATE::date AS RECENCY
+    FROM MAX_INVOICE_DATE
+), 
+FREQUENCY AS 
+(
+    SELECT 
+        customer_id,
+        COUNT(distinct invoiceno) AS FREQUENCY
+    FROM dataset
+    WHERE invoiceno NOT LIKE 'C%'
+    GROUP BY customer_id
+),
+MONETARY AS 
+(
+    SELECT 
+        customer_id,
+        SUM(quantity * unitprice) AS MONETARY
+    FROM dataset
+    WHERE invoiceno NOT LIKE 'C%'
+    GROUP BY customer_id
+)
+SELECT 
+    R.CUSTOMER_ID,
+    R.RECENCY,
+    F.FREQUENCY,
+    M.MONETARY,
+    NTILE(5) OVER (ORDER BY R.RECENCY DESC) AS RECENCY_SCORE, 
+    NTILE(5) OVER (ORDER BY F.FREQUENCY) AS FREQUENCY_SCORE,
+    NTILE(5) OVER (ORDER BY M.MONETARY) AS MONETARY_SCORE,
+    CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) AS RFM_SCORE,
+    CASE
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('11', '12', '21', '22') THEN 'HIBERNATING'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('13', '14', '23', '24') THEN 'AT RISK'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('15', '25') THEN 'CANT LOSE'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('31', '32') THEN 'ABOUT TO SLEEP'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) = '33' THEN 'NEED ATTENTION'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('34', '35', '44', '45') THEN 'LOYAL CUSTOMERS'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) = '41' THEN 'PROMISING'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('42', '43', '52', '53') THEN 'POTENTIAL LOYALISTS'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) = '51' THEN 'NEW CUSTOMERS'
+        WHEN CONCAT(NTILE(5) OVER (ORDER BY R.RECENCY DESC), NTILE(5) OVER (ORDER BY F.FREQUENCY)) IN ('54', '55') THEN 'CHAMPIONS'
+    END AS RFM_CATEGORY
+FROM RFM AS R
+INNER JOIN FREQUENCY AS F ON R.CUSTOMER_ID = F.CUSTOMER_ID
+INNER JOIN MONETARY AS M ON R.CUSTOMER_ID = M.CUSTOMER_ID
+ORDER BY F.FREQUENCY DESC;
+
+
